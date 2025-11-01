@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能天气查询</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script>
+    // Tailwind 配置
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563EB',
+            secondary: '#10B981',
+            accent: '#F59E0B',
+            dark: '#1E293B',
+            light: '#F8FAFC'
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .card-shadow {
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+      }
+      .search-shadow {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.6s ease-in-out;
+      }
+      .animate-slide-up {
+        animation: slideUp 0.5s ease-out;
+      }
+      .animate-pulse-slow {
+        animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      .animate-bounce-slow {
+        animation: bounce 2s infinite;
+      }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+  </style>
+</head>
+<body class="font-inter bg-slate-50 min-h-screen flex flex-col transition-colors duration-500">
+  <!-- 背景装饰 -->
+  <div class="fixed inset-0 -z-10 overflow-hidden">
+    <div class="absolute top-20 left-1/4 w-80 h-80 bg-primary/5 rounded-full filter blur-3xl"></div>
+    <div class="absolute bottom-20 right-1/4 w-80 h-80 bg-secondary/5 rounded-full filter blur-3xl"></div>
+  </div>
+
+  <div class="container mx-auto px-4 py-8 flex-grow flex flex-col max-w-md">
+    <!-- 标题 -->
+    <div class="text-center mb-6 animate-fade-in">
+      <h1 class="text-[clamp(1.8rem,4vw,2.5rem)] font-bold text-dark text-shadow">
+        <i class="fa fa-cloud text-primary mr-2"></i>智能天气查询
+      </h1>
+      <p class="text-slate-500 mt-2">自动定位或搜索城市，获取实时天气</p>
+    </div>
+
+    <!-- 城市搜索框 -->
+    <div class="mb-4 animate-slide-up relative">
+      <div class="relative">
+        <input type="text" id="city-input" placeholder="输入城市名称（支持模糊搜索）" 
+               class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white/90 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all search-shadow"
+               autocomplete="off">
+        <button id="search-btn" class="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-white p-2 rounded-lg hover:bg-primary/90 transition-colors shadow-md">
+          <i class="fa fa-search"></i>
+        </button>
+        <button id="locate-btn" class="absolute right-14 top-1/2 transform -translate-y-1/2 bg-white text-primary p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm">
+          <i class="fa fa-map-marker"></i>
+        </button>
+      </div>
+      
+      <!-- 搜索结果下拉框 -->
+      <div id="search-results" class="absolute w-full mt-1 bg-white rounded-lg shadow-lg max-h-60 overflow-y-auto z-50 hidden animate-fade-in">
+        <div id="results-list" class="p-2">
+          <!-- 搜索结果将动态插入这里 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 城市信息显示 -->
+    <div id="city-info" class="text-center text-sm text-slate-500 mb-6 hidden">
+      <span id="current-city" class="font-medium text-primary"></span>
+      <span id="city-detail" class="ml-2"></span>
+    </div>
+
+    <!-- 天气卡片 -->
+    <div id="weather-card" class="bg-white/95 backdrop-blur-md rounded-2xl p-6 card-shadow mb-6 opacity-0 scale-95 transition-all duration-300 hidden">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 id="weather-city-name" class="text-xl font-semibold text-dark"></h2>
+          <div id="weather-update-time" class="text-xs text-slate-400 mt-1"></div>
+        </div>
+        <div id="weather-icon" class="text-5xl text-accent"></div>
+      </div>
+
+      <div class="flex items-center justify-center mb-8">
+        <div id="weather-temp" class="text-[clamp(2.5rem,8vw,4rem)] font-bold text-dark"></div>
+        <div id="weather-text" class="text-xl font-medium text-slate-700 ml-4"></div>
+      </div>
+
+      <!-- 天气详情网格 -->
+      <div class="grid grid-cols-2 gap-4 animate-slide-up">
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+          <div class="text-slate-500 text-sm mb-1"><i class="fa fa-thermometer-half mr-1"></i> 体感温度</div>
+          <div id="feels-like" class="text-dark font-medium text-lg"></div>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+          <div class="text-slate-500 text-sm mb-1"><i class="fa fa-location-arrow mr-1"></i> 风向</div>
+          <div id="wind-dir" class="text-dark font-medium text-lg"></div>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+          <div class="text-slate-500 text-sm mb-1"><i class="fa fa-bolt mr-1"></i> 风力/风速</div>
+          <div id="wind-scale-speed" class="text-dark font-medium text-lg"></div>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+          <div class="text-slate-500 text-sm mb-1"><i class="fa fa-tint mr-1"></i> 湿度</div>
+          <div id="humidity" class="text-dark font-medium text-lg"></div>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+          <div class="text-slate-500 text-sm mb-1"><i class="fa fa-eye mr-1"></i> 能见度</div>
+          <div id="visibility" class="text-dark font-medium text-lg"></div>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+          <div class="text-slate-500 text-sm mb-1"><i class="fa fa-dashboard mr-1"></i> 气压</div>
+          <div id="pressure" class="text-dark font-medium text-lg"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 加载状态 -->
+    <div id="loading" class="flex flex-col items-center justify-center py-12 hidden animate-fade-in">
+      <div class="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4"></div>
+      <p id="loading-text" class="text-slate-600">正在获取数据...</p>
+    </div>
+
+    <!-- 错误状态 -->
+    <div id="error" class="hidden flex-col items-center justify-center py-12 animate-fade-in">
+      <div class="text-5xl text-red-400 mb-4"><i class="fa fa-exclamation-circle"></i></div>
+      <p id="error-message" class="text-slate-600 text-center mb-4">查询失败，请重试</p>
+      <button id="retry-btn" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-md">
+        重试
+      </button>
+    </div>
+
+    <!-- 初始提示 -->
+    <div id="initial-hint" class="flex flex-col items-center justify-center py-12 animate-fade-in">
+      <div class="text-6xl text-slate-200 mb-4 animate-bounce-slow"><i class="fa fa-map-marker text-primary"></i></div>
+      <p class="text-slate-500 text-center mb-6">请点击定位按钮自动获取位置，或输入城市名称搜索</p>
+      <div class="flex space-x-4">
+        <button id="initial-locate-btn" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-md">
+          <i class="fa fa-map-marker mr-2"></i>自动定位
+        </button>
+        <button id="initial-search-btn" class="px-4 py-2 bg-white text-primary rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors shadow-md">
+          <i class="fa fa-search mr-2"></i>手动搜索
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 页脚 -->
+  <footer class="py-4 text-center text-slate-500 text-sm">
+    <p>数据来源: <a href="https://www.qweather.com" target="_blank" class="text-primary hover:underline">和风天气</a></p>
+    <p class="mt-1">© 2025 智能天气查询工具</p>
+  </footer>
+
+  <script>
+    // 配置信息
+    const API_KEY = "35459b2323b940b6b823a00efcac9330";
+    const CITY_LOOKUP_URL = "https://geoapi.qweather.com/v2/city/lookup";
+    const WEATHER_URL = "https://devapi.qweather.com/v7/weather/now";
+    const DEFAULT_RANGE = "cn"; // 默认搜索范围：中国
+    const MAX_RESULTS = 10; // 最大返回结果数
+
+    // 天气图标映射表
+    const WEATHER_ICON_MAP = {
+      '100': 'fa-sun-o',      // 晴
+      '101': 'fa-cloud',      // 多云
+      '102': 'fa-cloud',      // 少云
+      '103': 'fa-cloud',      // 晴间多云
+      '104': 'fa-cloud',      // 阴
+      '200': 'fa-bolt',       // 雷阵雨
+      '201': 'fa-bolt',       // 雷阵雨伴有冰雹
+      '202': 'fa-bolt',       // 强雷阵雨
+      '300': 'fa-tint',       // 小雨
+      '301': 'fa-tint',       // 中雨
+      '302': 'fa-tint',       // 大雨
+      '303': 'fa-tint',       // 暴雨
+      '310': 'fa-snowflake-o',// 小雪
+      '311': 'fa-snowflake-o',// 中雪
+      '312': 'fa-snowflake-o',// 大雪
+      '313': 'fa-snowflake-o',// 暴雪
+      '314': 'fa-tint',       // 雨夹雪
+      '400': 'fa-cloud',      // 雾
+      '401': 'fa-cloud',      // 浓雾
+      '402': 'fa-cloud',      // 强浓雾
+      '406': 'fa-cloud',      // 霾
+      '407': 'fa-cloud',      // 中度霾
+      '408': 'fa-cloud',      // 重度霾
+      '409': 'fa-cloud',      // 严重霾
+      '500': 'fa-thermometer-half', // 冷
+      '501': 'fa-thermometer-full', // 热
+      '999': 'fa-question'    // 未知
+    };
+
+    // DOM元素
+    const elements = {
+      cityInput: document.getElementById('city-input'),
+      searchBtn: document.getElementById('search-btn'),
+      locateBtn: document.getElementById('locate-btn'),
+      initialLocateBtn: document.getElementById('initial-locate-btn'),
+      initialSearchBtn: document.getElementById('initial-search-btn'),
+      retryBtn: document.getElementById('retry-btn'),
+      searchResults: document.getElementById('search-results'),
+      resultsList: document.getElementById('results-list'),
+      cityInfo: document.getElementById('city-info'),
+      currentCity: document.getElementById('current-city'),
+      cityDetail: document.getElementById('city-detail'),
+      weatherCard: document.getElementById('weather-card'),
+      weatherCityName: document.getElementById('weather-city-name'),
+      weatherUpdateTime: document.getElementById('weather-update-time'),
+      weatherIcon: document.getElementById('weather-icon'),
+      weatherTemp: document.getElementById('weather-temp'),
+      weatherText: document.getElementById('weather-text'),
+      feelsLike: document.getElementById('feels-like'),
+      windDir: document.getElementById('wind-dir'),
+      windScaleSpeed: document.getElementById('wind-scale-speed'),
+      humidity: document.getElementById('humidity'),
+      visibility: document.getElementById('visibility'),
+      pressure: document.getElementById('pressure'),
+      loading: document.getElementById('loading'),
+      loadingText: document.getElementById('loading-text'),
+      error: document.getElementById('error'),
+      errorMessage: document.getElementById('error-message'),
+      initialHint: document.getElementById('initial-hint')
+    };
+
+    // 全局变量
+    let currentCityData = null; // 当前选中的城市数据
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', () => {
+      // 绑定事件
+      elements.searchBtn.addEventListener('click', handleSearch);
+      elements.locateBtn.addEventListener('click', getLocation);
+      elements.initialLocateBtn.addEventListener('click', getLocation);
+      elements.initialSearchBtn.addEventListener('click', () => {
+        elements.cityInput.focus();
+      });
+      elements.retryBtn.addEventListener('click', retryLastOperation);
+      elements.cityInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleSearch();
+      });
+      elements.cityInput.addEventListener('input', handleInputChange);
+      
+      // 点击页面其他地方关闭搜索结果
+      document.addEventListener('click', (e) => {
+        if (!elements.cityInput.contains(e.target) && !elements.searchResults.contains(e.target)) {
+          elements.searchResults.classList.add('hidden');
+        }
+      });
+    });
+
+    // 处理输入框变化（实现模糊搜索）
+    async function handleInputChange() {
+      const inputValue = elements.cityInput.value.trim();
+      
+      // 输入长度不足时不搜索
+      if (inputValue.length < 1) {
+        elements.searchResults.classList.add('hidden');
+        return;
+      }
+      
+      // 显示加载状态
+      elements.resultsList.innerHTML = '<div class="text-center py-2 text-slate-500"><i class="fa fa-spinner fa-spin mr-1"></i> 搜索中...</div>';
+      elements.searchResults.classList.remove('hidden');
+      
+      try {
+        // 调用城市搜索API
+        const results = await searchCity(inputValue);
+        
+        if (results.length === 0) {
+          elements.resultsList.innerHTML = '<div class="text-center py-2 text-slate-500">未找到相关城市</div>';
+          return;
+        }
+        
+        // 渲染搜索结果
+        renderSearchResults(results);
+        
+      } catch (error) {
+        elements.resultsList.innerHTML = `<div class="text-center py-2 text-red-500">${error.message}</div>`;
+      }
+    }
+
+    // 处理搜索
+    async function handleSearch() {
+      const inputValue = elements.cityInput.value.trim();
+      
+      if (!inputValue) {
+        showError('请输入城市名称');
+        return;
+      }
+      
+      // 显示加载状态
+      showLoading('正在搜索城市...');
+      
+      try {
+        // 搜索城市
+        const results = await searchCity(inputValue);
+        
+        if (results.length === 0) {
+          showError('未找到相关城市，请尝试其他关键词');
+          return;
+        }
+        
+        // 如果只有一个结果，直接选择该城市
+        if (results.length === 1) {
+          selectCity(results[0]);
+        } else {
+          // 显示多个结果供选择
+          renderSearchResults(results);
+          elements.searchResults.classList.remove('hidden');
+          hideLoading();
+        }
+        
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    // 搜索城市（支持模糊搜索、经纬度、LocationID）
+    async function searchCity(keyword) {
+      try {
+        // 构建请求URL
+        const url = new URL(CITY_LOOKUP_URL);
+        url.searchParams.append('key', API_KEY);
+        url.searchParams.append('location', keyword);
+        url.searchParams.append('range', DEFAULT_RANGE);
+        url.searchParams.append('number', MAX_RESULTS);
+        url.searchParams.append('lang', 'zh');
+        
+        const response = await fetch(url.toString());
+        const data = await response.json();
+        
+        if (data.code !== '200') {
+          throw new Error(`城市搜索失败：${getErrorCodeMessage(data.code)}`);
+        }
+        
+        if (!data.location || data.location.length === 0) {
+          return [];
+        }
+        
+        return data.location;
+        
+      } catch (error) {
+        console.error('城市搜索错误:', error);
+        throw error;
+      }
+    }
+
+    // 渲染搜索结果
+    function renderSearchResults(results) {
+      elements.resultsList.innerHTML = '';
+      
+      results.forEach(city => {
+        const cityItem = document.createElement('div');
+        cityItem.className = 'p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors flex items-center justify-between';
+        cityItem.dataset.cityId = city.id;
+        
+        // 构建城市信息文本
+        let cityText = `${city.name}`;
+        let detailText = '';
+        
+        if (city.adm1 && city.adm1 !== city.name) {
+          detailText += city.adm1;
+        }
+        if (city.adm2 && city.adm2 !== city.name && city.adm2 !== city.adm1) {
+          detailText += detailText ? ` · ${city.adm2}` : city.adm2;
+        }
+        if (city.country && city.country !== '中国') {
+          detailText += detailText ? ` · ${city.country}` : city.country;
+        }
+        
+        cityItem.innerHTML = `
+          <div>
+            <div class="font-medium">${cityText}</div>
+            ${detailText ? `<div class="text-xs text-slate-500">${detailText}</div>` : ''}
+          </div>
+          <i class="fa fa-chevron-right text-slate-300"></i>
+        `;
+        
+        // 点击选择城市
+        cityItem.addEventListener('click', () => {
+          selectCity(city);
+          elements.searchResults.classList.add('hidden');
+        });
+        
+        elements.resultsList.appendChild(cityItem);
+      });
+    }
+
+    // 选择城市并获取天气
+    async function selectCity(city) {
+      currentCityData = city;
+      
+      // 更新UI显示
+      elements.currentCity.textContent = city.name;
+      
+      // 构建城市详细信息
+      let detailText = `${city.adm1} · ${city.country}`;
+      if (city.lat && city.lon) {
+        detailText += ` · 经纬度: ${city.lat.slice(0, 6)}, ${city.lon.slice(0, 6)}`;
+      }
+      elements.cityDetail.textContent = detailText;
+      
+      elements.cityInfo.classList.remove('hidden');
+      elements.initialHint.classList.add('hidden');
+      
+      // 显示加载状态
+      showLoading(`正在获取${city.name}的天气...`);
+      
+      try {
+        // 获取天气信息
+        const weatherData = await getWeatherByCityId(city.id);
+        
+        // 更新天气UI
+        updateWeatherUI(city, weatherData);
+        
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    // 获取用户地理位置
+    function getLocation() {
+      if (!navigator.geolocation) {
+        showError('您的浏览器不支持地理定位功能');
+        return;
+      }
+      
+      // 显示加载状态
+      showLoading('正在获取您的位置...');
+      
+      // 调用地理定位API
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const lat = position.coords.latitude.toFixed(2);
+          const lon = position.coords.longitude.toFixed(2);
+          console.log(`定位成功：经度 ${lon}, 纬度 ${lat}`);
+          
+          // 使用经纬度搜索城市
+          try {
+            const results = await searchCity(`${lon},${lat}`);
+            
+            if (results.length === 0) {
+              showError('无法根据您的位置找到对应的城市');
+              return;
+            }
+            
+            // 选择第一个结果
+            selectCity(results[0]);
+            
+          } catch (error) {
+            showError(`定位失败：${error.message}`);
+          }
+        },
+        (error) => {
+          let errorMessage = '获取位置失败';
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = '您拒绝了位置权限，请在设置中开启';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = '位置信息不可用';
+              break;
+            case error.TIMEOUT:
+              errorMessage = '获取位置超时';
+              break;
+          }
+          showError(errorMessage);
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 300000
+        }
+      );
+    }
+
+    // 通过城市ID获取天气信息
+    async function getWeatherByCityId(cityId) {
+      try {
+        const url = new URL(WEATHER_URL);
+        url.searchParams.append('key', API_KEY);
+        url.searchParams.append('location', cityId);
+        
+        const response = await fetch(url.toString());
+        const data = await response.json();
+        
+        if (data.code !== '200') {
+          throw new Error(`获取天气失败：${getErrorCodeMessage(data.code)}`);
+        }
+        
+        return data;
+        
+      } catch (error) {
+        console.error('天气获取错误:', error);
+        throw error;
+      }
+    }
+
+    // 更新天气UI
+    function updateWeatherUI(city, weatherData) {
+      const { now, updateTime } = weatherData;
+      
+      // 更新城市名称
+      elements.weatherCityName.textContent = city.name;
+      
+      // 格式化更新时间
+      const formattedUpdateTime = formatDateTime(updateTime);
+      elements.weatherUpdateTime.textContent = `更新时间：${formattedUpdateTime}`;
+      
+      // 更新天气信息
+      elements.weatherTemp.textContent = `${now.temp || '--'}℃`;
+      elements.weatherText.textContent = now.text || '未知';
+      elements.feelsLike.textContent = `${now.feelsLike || '--'}℃`;
+      elements.windDir.textContent = now.windDir || '未知';
+      elements.windScaleSpeed.textContent = `${now.windScale || '--'}级 / ${now.windSpeed || '--'}km/h`;
+      elements.humidity.textContent = `${now.humidity || '--'}%`;
+      elements.visibility.textContent = `${now.vis || '--'}km`;
+      elements.pressure.textContent = `${now.pressure || '--'}hPa`;
+      
+      // 设置天气图标
+      const iconClass = WEATHER_ICON_MAP[now.icon] || 'fa-question';
+      elements.weatherIcon.innerHTML = `<i class="fa ${iconClass}"></i>`;
+      
+      // 根据天气设置背景色
+      setBackgroundByWeather(now.text);
+      
+      // 显示天气卡片，隐藏其他状态
+      hideLoading();
+      elements.error.classList.add('hidden');
+      elements.weatherCard.classList.remove('hidden');
+      
+      // 添加动画效果
+      setTimeout(() => {
+        elements.weatherCard.style.opacity = '1';
+        elements.weatherCard.style.transform = 'scale(1)';
+      }, 50);
+    }
+
+    // 重试上次操作
+    function retryLastOperation() {
+      if (currentCityData) {
+        selectCity(currentCityData);
+      } else {
+        getLocation();
+      }
+    }
+
+    // 显示加载状态
+    function showLoading(text = '正在加载...') {
+      elements.loadingText.textContent = text;
+      elements.loading.classList.remove('hidden');
+      elements.weatherCard.classList.add('hidden');
+      elements.error.classList.add('hidden');
+      elements.initialHint.classList.add('hidden');
+    }
+
+    // 隐藏加载状态
+    function hideLoading() {
+      elements.loading.classList.add('hidden');
+    }
+
+    // 显示错误信息
+    function showError(message) {
+      elements.errorMessage.textContent = message;
+      elements.error.classList.remove('hidden');
+      elements.loading.classList.add('hidden');
+      elements.weatherCard.classList.add('hidden');
+    }
+
+    // 格式化日期时间
+    function formatDateTime(dateTimeStr) {
+      if (!dateTimeStr || typeof dateTimeStr !== 'string') {
+        return '未知';
+      }
+      
+      const [date, time] = dateTimeStr.split(' ');
+      
+      if (!date) {
+        return '未知';
+      }
+      
+      if (time && time.length >= 5) {
+        return `${date} ${time.slice(0, 5)}`;
+      } else if (time) {
+        return `${date} ${time}`;
+      } else {
+        return date;
+      }
+    }
+
+    // 根据天气设置背景
+    function setBackgroundByWeather(weatherText) {
+      const body = document.body;
+      
+      body.classList.remove('bg-slate-50', 'bg-blue-50', 'bg-gray-50', 'bg-yellow-50', 'bg-indigo-50');
+      
+      if (weatherText && weatherText.includes('晴')) {
+        body.classList.add('bg-yellow-50');
+      } else if (weatherText && (weatherText.includes('雨') || weatherText.includes('雪'))) {
+        body.classList.add('bg-blue-50');
+      } else if (weatherText && (weatherText.includes('阴') || weatherText.includes('云'))) {
+        body.classList.add('bg-gray-50');
+      } else if (weatherText && (weatherText.includes('雾') || weatherText.includes('霾'))) {
+        body.classList.add('bg-indigo-50');
+      } else {
+        body.classList.add('bg-slate-50');
+      }
+    }
+
+    // 获取错误码信息
+    function getErrorCodeMessage(code) {
+      const errorMap = {
+        '400': '请求参数错误',
+        '401': 'API密钥错误或过期',
+        '402': 'API密钥已达到调用限制',
+        '403': 'API密钥无访问权限',
+        '404': '请求的资源不存在',
+        '429': '请求过于频繁',
+        '500': '服务器内部错误',
+        '503': '服务暂时不可用'
+      };
+      return errorMap[code] || `错误码: ${code}`;
+    }
+  </script>
+</body>
+</html>
